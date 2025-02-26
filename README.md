@@ -74,5 +74,7 @@ Install Required Tools first:
 
 1. Run the shell script `nvim_linux.sh` to install NVim.
 
+1. Create `~/.config` if it is not existed, by `mkdir -p ~/.config`
+
 1. Create symlink to this repository for LazyVim:
    `ln -s ~/dot-files/nvim ~/.config/nvim`
