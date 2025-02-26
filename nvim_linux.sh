@@ -3,7 +3,7 @@
 # Neovim User-Specific Installation & Uninstallation Script with Explicit Shell Argument
 
 # Variables
-NVIM_URL="https://github.com/neovim/neovim/releases/latest/download/nvim.appimage"
+NVIM_URL="https://github.com/neovim/neovim/releases/latest/download/nvim-linux-x86_64.appimage"
 INSTALL_DIR="$HOME/.local/bin"
 NVIM_BIN="$INSTALL_DIR/nvim"
 CONFIG_FILE=""
