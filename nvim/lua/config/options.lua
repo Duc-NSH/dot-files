@@ -30,6 +30,12 @@ vim.diagnostic.config({
     },
 })
 
+-- LSP Server to use for Python.
+-- "basedpyright", or "pyright".
+vim.g.lazyvim_python_lsp = "basedpyright"
+-- Set to "ruff_lsp" to use the old LSP implementation version.
+vim.g.lazyvim_python_ruff = "ruff"
+
 -- auto-reload files when modified externally
 vim.o.autoread = true
 vim.api.nvim_create_autocmd({ "BufEnter", "CursorHold", "CursorHoldI", "FocusGained" }, {
