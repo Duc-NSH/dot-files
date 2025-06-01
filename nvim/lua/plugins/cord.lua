@@ -1,6 +1,6 @@
 return {
     "vyfor/cord.nvim",
-    branch = "client-server",
+    branch = "master",
     build = ":Cord update",
     config = function()
         require("cord").setup({
@@ -215,12 +215,3 @@ return {
         })
     end,
 }
-
--- return {
---     {
---         "vyfor/cord.nvim",
---         branch = "client-server",
---         build = ":Cord update",
---         opts = {}, -- calls require('cord').setup()
---     },
--- }
