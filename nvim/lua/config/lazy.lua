@@ -31,7 +31,7 @@ require("lazy").setup({
         version = false, -- always use the latest git commit
         -- version = "*", -- try installing the latest stable version for plugins that support semver
     },
-    install = { colorscheme = { "tokyonight", "habamax" } },
+    install = { colorscheme = { "tokyonight", "habamax", "catppuccin" } },
     checker = {
         enabled = true, -- check for plugin updates periodically
         notify = false, -- notify on update
@@ -49,6 +49,69 @@ require("lazy").setup({
                 "tutor",
                 "zipPlugin",
             },
+        },
+    },
+})
+
+-- Setup for basedpyright
+require("lspconfig").basedpyright.setup({
+    settings = {
+        basedpyright = {
+            analysis = {
+                diagnosticMode = "openFilesOnly", --  ["openFilesOnly", "workspace"]:
+                inlayHints = {
+                    callArgumentNames = true,
+                },
+            },
+        },
+    },
+})
+
+-- Schema storee for jsonls
+require("lspconfig").jsonls.setup({
+    settings = {
+        json = {
+            schemas = require("schemastore").json.schemas(),
+            validate = { enable = true },
+        },
+    },
+})
+
+-- Schema store for yamlls
+require("lspconfig").yamlls.setup({
+    settings = {
+        yaml = {
+            schemaStore = {
+                -- You must disable built-in schemaStore support if you want to use
+                -- this plugin and its advanced options like `ignore`.
+                enable = false,
+                -- Avoid TypeError: Cannot read properties of undefined (reading 'length')
+                url = "",
+            },
+            schemas = require("schemastore").yaml.schemas({
+                replace = {
+                    -- Overide trafeik v2 schema with v3
+                    ["Traefik v3"] = {
+                        description = "Traefik v3 YAML configuration file",
+                        fileMatch = { "traefik.yml", "traefik.yaml" },
+                        name = "Traefik v3",
+                        url = "https://json.schemastore.org/traefik-v3.json",
+                    },
+                    ["Traefik v3 File Provider"] = {
+                        description = "Traefik v3 Dynamic Configuration File Provider",
+                        fileMatch = {
+                            "services.yml",
+                            "services.yaml",
+                            "middlewares.yml",
+                            "middlewares.yaml",
+                            "tls.yml",
+                            "tls.yaml",
+                        },
+                        name = "Traefik v3 File Provider",
+                        url = "https://json.schemastore.org/traefik-v3-file-provider.json",
+                    },
+                },
+            }),
         },
     },
 })
