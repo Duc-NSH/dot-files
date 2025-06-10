@@ -340,61 +340,144 @@ install_zsh_syntax_highlighting() {
   print_success "zsh-syntax-highlighting installed!"
 }
 
+install_cargo() {
+  print_step "Setting up Rust and Cargo..."
+
+  # Check if cargo is already installed
+  if command -v cargo &>/dev/null; then
+    CARGO_VERSION=$(cargo --version | cut -d' ' -f2)
+    print_info "Cargo $CARGO_VERSION is already installed"
+
+    # Check if it's up to date (optional update)
+    read -p "Do you want to update Rust/Cargo to the latest version? [y/N]: " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+      print_step "Updating Rust and Cargo..."
+      rustup update stable
+      rustup default stable
+    fi
+    return 0
+  fi
+
+  print_step "Installing Rust and Cargo via rustup..."
+
+  # Download and install rustup
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+
+  # Source cargo environment
+  source "$HOME/.cargo/env"
+
+  # Verify installation
+  if command -v cargo &>/dev/null; then
+    CARGO_VERSION=$(cargo --version | cut -d' ' -f2)
+    print_success "Rust and Cargo $CARGO_VERSION installed successfully!"
+
+    # Add cargo bin to current session PATH if not already there
+    if [[ ":$PATH:" != *":$HOME/.cargo/bin:"* ]]; then
+      export PATH="$HOME/.cargo/bin:$PATH"
+    fi
+  else
+    print_error "Cargo installation failed!"
+    exit 1
+  fi
+}
+
 install_eza() {
   print_step "Installing eza (better ls)..."
 
   if command -v eza &>/dev/null; then
-    print_success "eza is already installed"
-    return 0
+    EZA_VERSION=$(eza --version | head -1 | awk '{print $2}')
+    print_success "eza $EZA_VERSION is already installed"
+
+    read -p "Do you want to update eza to the latest version? [y/N]: " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+      return 0
+    fi
   fi
 
+  # Check if eza is available via package manager first (for newer distros)
   case $PKG_MANAGER in
-  apt)
-    # For Ubuntu/Debian, need to install from cargo or snap
-    if command -v cargo &>/dev/null; then
-      cargo install eza
-    elif command -v snap &>/dev/null; then
-      sudo snap install eza
-    else
-      print_warning "Installing rust/cargo first for eza..."
-      curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-      source "$HOME/.cargo/env"
-      cargo install eza
-    fi
-    ;;
-  yum | dnf)
-    # Try to install via cargo
-    if ! command -v cargo &>/dev/null; then
-      $INSTALL_CMD rust cargo
-    fi
-    cargo install eza
-    ;;
   pacman)
-    $INSTALL_CMD eza
+    print_step "Installing eza via pacman..."
+    if $INSTALL_CMD eza 2>/dev/null; then
+      print_success "eza installed via pacman!"
+      return 0
+    else
+      print_info "pacman installation failed, falling back to cargo..."
+    fi
     ;;
   zypper)
-    $INSTALL_CMD eza
+    print_step "Installing eza via zypper..."
+    if $INSTALL_CMD eza 2>/dev/null; then
+      print_success "eza installed via zypper!"
+      return 0
+    else
+      print_info "zypper installation failed, falling back to cargo..."
+    fi
     ;;
   apk)
-    $INSTALL_CMD eza
+    print_step "Installing eza via apk..."
+    if $INSTALL_CMD eza 2>/dev/null; then
+      print_success "eza installed via apk!"
+      return 0
+    else
+      print_info "apk installation failed, falling back to cargo..."
+    fi
     ;;
   brew)
-    brew install eza
-    ;;
-  *)
-    print_warning "Installing eza via cargo..."
-    if ! command -v cargo &>/dev/null; then
-      curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-      source "$HOME/.cargo/env"
+    print_step "Installing eza via Homebrew..."
+    if brew install eza 2>/dev/null; then
+      print_success "eza installed via Homebrew!"
+      return 0
+    else
+      print_info "Homebrew installation failed, falling back to cargo..."
     fi
-    cargo install eza
     ;;
   esac
 
-  if command -v eza &>/dev/null; then
-    print_success "eza installed successfully!"
+  # Install via cargo (universal method)
+  print_step "Installing eza via cargo (latest version)..."
+
+  # Ensure cargo is available
+  install_cargo
+
+  # Make sure cargo is in PATH for current session
+  if ! command -v cargo &>/dev/null; then
+    if [ -f "$HOME/.cargo/env" ]; then
+      source "$HOME/.cargo/env"
+    elif [ -d "$HOME/.cargo/bin" ]; then
+      export PATH="$HOME/.cargo/bin:$PATH"
+    else
+      print_error "Cargo is not available in PATH!"
+      exit 1
+    fi
+  fi
+
+  # Install eza with cargo
+  print_info "This may take a few minutes as eza will be compiled from source..."
+  if cargo install eza; then
+    print_success "eza installed successfully via cargo!"
+
+    # Verify installation
+    if command -v eza &>/dev/null; then
+      EZA_VERSION=$(eza --version | head -1 | awk '{print $2}')
+      print_success "eza $EZA_VERSION is now available!"
+    else
+      # Check if it's in .cargo/bin but not in PATH
+      if [ -f "$HOME/.cargo/bin/eza" ]; then
+        print_warning "eza installed but not in PATH"
+        print_info "Adding ~/.cargo/bin to PATH in .zshrc"
+        # This will be handled by the custom config append
+      else
+        print_error "eza installation verification failed!"
+        exit 1
+      fi
+    fi
   else
-    print_warning "eza installation may have failed, but continuing..."
+    print_error "eza installation via cargo failed!"
+    print_info "You can try installing it manually later with: cargo install eza"
+    print_warning "Continuing with setup without eza..."
   fi
 }
 
@@ -500,7 +583,7 @@ append_custom_config() {
   if [ ! -f "$ZSH_CONFIG_APPEND" ]; then
     print_error "Custom zsh config not found at: $ZSH_CONFIG_APPEND"
     print_info "Expected file structure:"
-    print_info "  ~/dot-files/zsh/.zshrc"
+    print_info "  ~/dot-files/zsh/zshrc-append"
     exit 1
   fi
 
