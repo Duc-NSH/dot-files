@@ -340,151 +340,6 @@ install_zsh_syntax_highlighting() {
   print_success "zsh-syntax-highlighting installed!"
 }
 
-install_cargo() {
-  print_step "Setting up Rust and Cargo..."
-
-  # Check if cargo is already installed
-  if command -v cargo &>/dev/null; then
-    CARGO_VERSION=$(cargo --version | cut -d' ' -f2)
-    RUSTC_VERSION=$(rustc --version | cut -d' ' -f2)
-    print_info "Cargo $CARGO_VERSION is already installed"
-    print_info "rustc $RUSTC_VERSION is currently active"
-
-    # Check if rustup is available for updates
-    if command -v rustup &>/dev/null; then
-      # Always update to latest stable for compatibility
-      print_step "Updating Rust to latest stable version..."
-      rustup update stable
-      rustup default stable
-
-      # Check updated version
-      NEW_RUSTC_VERSION=$(rustc --version | cut -d' ' -f2)
-      print_success "Updated to rustc $NEW_RUSTC_VERSION"
-    else
-      print_warning "rustup not available, cannot update Rust version"
-      print_info "Current Rust version may be too old for latest packages"
-    fi
-    return 0
-  fi
-
-  print_step "Installing latest stable Rust and Cargo via rustup..."
-
-  # Download and install rustup with latest stable
-  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile default
-
-  # Source cargo environment immediately
-  if [ -f "$HOME/.cargo/env" ]; then
-    source "$HOME/.cargo/env"
-    print_info "Sourced cargo environment"
-  fi
-
-  # Add cargo bin to current session PATH if not already there
-  if [ -d "$HOME/.cargo/bin" ] && [[ ":$PATH:" != *":$HOME/.cargo/bin:"* ]]; then
-    export PATH="$HOME/.cargo/bin:$PATH"
-    print_info "Added ~/.cargo/bin to current session PATH"
-  fi
-
-  # Update to ensure we have the very latest stable
-  if command -v rustup &>/dev/null; then
-    print_step "Ensuring latest stable Rust version..."
-    rustup update stable
-    rustup default stable
-  fi
-
-  # Verify cargo installation
-  if command -v cargo &>/dev/null; then
-    CARGO_VERSION=$(cargo --version | cut -d' ' -f2)
-    RUSTC_VERSION=$(rustc --version | cut -d' ' -f2)
-    print_success "Rust and Cargo $CARGO_VERSION installed successfully!"
-    print_success "rustc $RUSTC_VERSION is active"
-
-    # Verify rustup is also available
-    if command -v rustup &>/dev/null; then
-      RUSTUP_VERSION=$(rustup --version | head -1 | cut -d' ' -f2)
-      print_success "rustup $RUSTUP_VERSION is available"
-    else
-      print_warning "rustup not found in PATH, but cargo is working"
-    fi
-  else
-    print_error "Cargo installation failed!"
-    print_info "Trying to manually source cargo environment..."
-
-    # Try different ways to get cargo in PATH
-    for cargo_path in "$HOME/.cargo/bin/cargo" "/usr/local/cargo/bin/cargo"; do
-      if [ -f "$cargo_path" ]; then
-        CARGO_DIR=$(dirname "$cargo_path")
-        export PATH="$CARGO_DIR:$PATH"
-        print_info "Found cargo at $cargo_path, added to PATH"
-        break
-      fi
-    done
-
-    # Final verification
-    if command -v cargo &>/dev/null; then
-      print_success "Cargo is now available!"
-    else
-      print_error "Could not make cargo available. Please check the installation."
-      print_info "Try running: source ~/.cargo/env"
-      exit 1
-    fi
-  fi
-}
-
-check_rust_version_for_eza() {
-  print_step "Checking Rust version compatibility for eza..."
-
-  if ! command -v rustc &>/dev/null; then
-    print_error "rustc not found!"
-    return 1
-  fi
-
-  RUSTC_VERSION=$(rustc --version | cut -d' ' -f2)
-  print_info "Current rustc version: $RUSTC_VERSION"
-
-  # Extract major and minor version numbers for comparison
-  RUSTC_MAJOR=$(echo "$RUSTC_VERSION" | cut -d'.' -f1)
-  RUSTC_MINOR=$(echo "$RUSTC_VERSION" | cut -d'.' -f2)
-
-  # eza requires rustc 1.81.0 or newer
-  REQUIRED_MAJOR=1
-  REQUIRED_MINOR=81
-
-  if [ "$RUSTC_MAJOR" -gt "$REQUIRED_MAJOR" ] ||
-    ([ "$RUSTC_MAJOR" -eq "$REQUIRED_MAJOR" ] && [ "$RUSTC_MINOR" -ge "$REQUIRED_MINOR" ]); then
-    print_success "Rust version is compatible with eza"
-    return 0
-  else
-    print_warning "Rust version $RUSTC_VERSION is too old for eza (requires 1.81.0+)"
-
-    if command -v rustup &>/dev/null; then
-      print_step "Updating Rust to latest stable version..."
-      rustup update stable
-      rustup default stable
-
-      # Check new version
-      NEW_RUSTC_VERSION=$(rustc --version | cut -d' ' -f2)
-      NEW_RUSTC_MAJOR=$(echo "$NEW_RUSTC_VERSION" | cut -d'.' -f1)
-      NEW_RUSTC_MINOR=$(echo "$NEW_RUSTC_VERSION" | cut -d'.' -f2)
-
-      print_info "Updated to rustc $NEW_RUSTC_VERSION"
-
-      if [ "$NEW_RUSTC_MAJOR" -gt "$REQUIRED_MAJOR" ] ||
-        ([ "$NEW_RUSTC_MAJOR" -eq "$REQUIRED_MAJOR" ] && [ "$NEW_RUSTC_MINOR" -ge "$REQUIRED_MINOR" ]); then
-        print_success "Rust version is now compatible with eza"
-        return 0
-      else
-        print_error "Even after update, Rust version $NEW_RUSTC_VERSION is still too old"
-        print_info "You may need to wait for a newer stable Rust release"
-        return 1
-      fi
-    else
-      print_error "rustup not available, cannot update Rust version"
-      print_info "Please update Rust manually or install a newer version"
-      return 1
-    fi
-  fi
-}
-
 install_eza() {
   print_step "Installing eza (better ls)..."
 
@@ -499,144 +354,175 @@ install_eza() {
     fi
   fi
 
-  # Check if eza is available via package manager first (for newer distros)
+  # Install eza based on package manager
   case $PKG_MANAGER in
+  apt)
+    install_eza_ubuntu_debian
+    ;;
   pacman)
     print_step "Installing eza via pacman..."
-    if $INSTALL_CMD eza 2>/dev/null; then
+    if $INSTALL_CMD eza; then
       print_success "eza installed via pacman!"
-      return 0
     else
-      print_info "pacman installation failed, falling back to cargo..."
+      print_warning "pacman installation failed, trying cargo fallback..."
+      install_eza_cargo_fallback
     fi
     ;;
   zypper)
     print_step "Installing eza via zypper..."
-    if $INSTALL_CMD eza 2>/dev/null; then
+    if $INSTALL_CMD eza; then
       print_success "eza installed via zypper!"
-      return 0
     else
-      print_info "zypper installation failed, falling back to cargo..."
+      print_warning "zypper installation failed, trying cargo fallback..."
+      install_eza_cargo_fallback
     fi
     ;;
   apk)
     print_step "Installing eza via apk..."
-    if $INSTALL_CMD eza 2>/dev/null; then
+    if $INSTALL_CMD eza; then
       print_success "eza installed via apk!"
-      return 0
     else
-      print_info "apk installation failed, falling back to cargo..."
+      print_warning "apk installation failed, trying cargo fallback..."
+      install_eza_cargo_fallback
     fi
     ;;
   brew)
     print_step "Installing eza via Homebrew..."
-    if brew install eza 2>/dev/null; then
+    if brew install eza; then
       print_success "eza installed via Homebrew!"
-      return 0
     else
-      print_info "Homebrew installation failed, falling back to cargo..."
+      print_warning "Homebrew installation failed, trying cargo fallback..."
+      install_eza_cargo_fallback
     fi
+    ;;
+  *)
+    print_info "Package manager not supported, using cargo fallback..."
+    install_eza_cargo_fallback
     ;;
   esac
 
-  # Install via cargo (universal method)
-  print_step "Installing eza via cargo (latest version)..."
+  # Verify final installation
+  if command -v eza &>/dev/null; then
+    EZA_VERSION=$(eza --version | head -1 | awk '{print $2}' 2>/dev/null || echo "unknown")
+    print_success "eza $EZA_VERSION is now available!"
+  else
+    print_warning "eza installation completed but command not found in PATH"
+    print_info "You may need to restart your shell or check your PATH"
+  fi
+}
 
-  # Ensure cargo is available
-  install_cargo
+install_eza_ubuntu_debian() {
+  print_step "Installing eza via official repository (Ubuntu/Debian)..."
 
-  # Check Rust version compatibility before installing eza
-  if ! check_rust_version_for_eza; then
-    print_error "Rust version is incompatible with latest eza"
-    print_info "You can try installing an older version manually:"
-    echo -e "  ${BLUE}cargo install eza --version 0.18.0${NC}"
-    print_warning "Continuing with setup without eza..."
-    return 1
+  # Ensure gpg is installed
+  print_step "Ensuring GPG is available..."
+  if ! command -v gpg &>/dev/null; then
+    sudo apt update
+    sudo apt install -y gpg
   fi
 
-  # Make sure cargo is in PATH for current session
-  if ! command -v cargo &>/dev/null; then
-    print_step "Attempting to locate cargo..."
+  # Add eza repository
+  print_step "Adding eza repository..."
 
-    # Try sourcing cargo environment
+  # Create keyrings directory
+  sudo mkdir -p /etc/apt/keyrings
+
+  # Download and add GPG key
+  if wget -qO- https://raw.githubusercontent.com/eza-community/eza/main/deb.asc | sudo gpg --dearmor -o /etc/apt/keyrings/gierens.gpg; then
+    print_success "GPG key added successfully"
+  else
+    print_error "Failed to download GPG key"
+    print_warning "Trying cargo fallback..."
+    install_eza_cargo_fallback
+    return
+  fi
+
+  # Add repository to sources
+  if echo "deb [signed-by=/etc/apt/keyrings/gierens.gpg] http://deb.gierens.de stable main" | sudo tee /etc/apt/sources.list.d/gierens.list >/dev/null; then
+    print_success "Repository added to sources"
+  else
+    print_error "Failed to add repository"
+    print_warning "Trying cargo fallback..."
+    install_eza_cargo_fallback
+    return
+  fi
+
+  # Set correct permissions
+  sudo chmod 644 /etc/apt/keyrings/gierens.gpg /etc/apt/sources.list.d/gierens.list
+
+  # Update package list
+  print_step "Updating package list..."
+  if sudo apt update; then
+    print_success "Package list updated"
+  else
+    print_warning "Package update had warnings, continuing..."
+  fi
+
+  # Install eza
+  print_step "Installing eza from repository..."
+  if sudo apt install -y eza; then
+    print_success "eza installed successfully from official repository!"
+  else
+    print_error "Failed to install eza from repository"
+    print_warning "Trying cargo fallback..."
+    install_eza_cargo_fallback
+  fi
+}
+
+install_eza_cargo_fallback() {
+  print_step "Installing eza via cargo (fallback method)..."
+
+  # Simple cargo installation without complex version checking
+  install_cargo_simple
+
+  # Make sure cargo is in PATH
+  if ! command -v cargo &>/dev/null; then
     if [ -f "$HOME/.cargo/env" ]; then
       source "$HOME/.cargo/env"
-      print_info "Sourced ~/.cargo/env"
     fi
-
-    # Try adding cargo bin to PATH manually
     if [ -d "$HOME/.cargo/bin" ]; then
       export PATH="$HOME/.cargo/bin:$PATH"
-      print_info "Added ~/.cargo/bin to PATH"
-    fi
-
-    # Try common cargo installation paths
-    for cargo_path in "$HOME/.cargo/bin/cargo" "/usr/local/cargo/bin/cargo"; do
-      if [ -f "$cargo_path" ]; then
-        CARGO_DIR=$(dirname "$cargo_path")
-        export PATH="$CARGO_DIR:$PATH"
-        print_info "Found cargo at $cargo_path"
-        break
-      fi
-    done
-
-    # Final check
-    if ! command -v cargo &>/dev/null; then
-      print_error "Cargo is still not available in PATH!"
-      print_info "Please run the following commands manually:"
-      echo -e "  ${BLUE}source ~/.cargo/env${NC}"
-      echo -e "  ${BLUE}cargo install eza${NC}"
-      print_warning "Continuing with setup without eza..."
-      return 1
     fi
   fi
 
-  # Verify cargo is working
-  if ! cargo --version &>/dev/null; then
-    print_error "Cargo is not working properly!"
-    print_warning "Continuing with setup without eza..."
+  if ! command -v cargo &>/dev/null; then
+    print_error "Cargo is not available, cannot install eza"
+    print_warning "Continuing setup without eza..."
     return 1
   fi
 
-  # Install eza with cargo
+  # Try to install eza with cargo
   print_info "This may take a few minutes as eza will be compiled from source..."
-  print_info "Installing eza with: cargo install eza"
-
   if cargo install eza; then
     print_success "eza installed successfully via cargo!"
 
-    # Verify installation
-    if command -v eza &>/dev/null; then
-      EZA_VERSION=$(eza --version | head -1 | awk '{print $2}')
-      print_success "eza $EZA_VERSION is now available!"
-    elif [ -f "$HOME/.cargo/bin/eza" ]; then
-      print_success "eza installed to ~/.cargo/bin/eza"
-      print_info "Make sure ~/.cargo/bin is in your PATH"
-      # Add to PATH for current session
-      if [[ ":$PATH:" != *":$HOME/.cargo/bin:"* ]]; then
-        export PATH="$HOME/.cargo/bin:$PATH"
-        print_info "Added ~/.cargo/bin to current session PATH"
-      fi
-
-      # Verify again
-      if command -v eza &>/dev/null; then
-        EZA_VERSION=$(eza --version | head -1 | awk '{print $2}')
-        print_success "eza $EZA_VERSION is now available!"
-      fi
-    else
-      print_warning "eza installation completed but binary not found"
-      print_info "You may need to add ~/.cargo/bin to your PATH manually"
+    # Add cargo bin to PATH if needed
+    if [ -d "$HOME/.cargo/bin" ] && [[ ":$PATH:" != *":$HOME/.cargo/bin:"* ]]; then
+      export PATH="$HOME/.cargo/bin:$PATH"
     fi
   else
     print_error "eza installation via cargo failed!"
-    print_info "This might be due to compilation issues or dependency conflicts."
-    print_info "You can try installing it manually later with:"
-    echo -e "  ${BLUE}source ~/.cargo/env${NC}"
+    print_info "You can try installing it manually later:"
     echo -e "  ${BLUE}cargo install eza${NC}"
-    print_info "Or try an older version:"
-    echo -e "  ${BLUE}cargo install eza --version 0.18.0${NC}"
-    print_warning "Continuing with setup without eza..."
+    print_warning "Continuing setup without eza..."
     return 1
+  fi
+}
+
+install_cargo_simple() {
+  if command -v cargo &>/dev/null; then
+    return 0
+  fi
+
+  print_step "Installing Rust and Cargo..."
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
+
+  if [ -f "$HOME/.cargo/env" ]; then
+    source "$HOME/.cargo/env"
+  fi
+
+  if [ -d "$HOME/.cargo/bin" ]; then
+    export PATH="$HOME/.cargo/bin:$PATH"
   fi
 }
 
