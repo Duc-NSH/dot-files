@@ -346,26 +346,30 @@ install_cargo() {
   # Check if cargo is already installed
   if command -v cargo &>/dev/null; then
     CARGO_VERSION=$(cargo --version | cut -d' ' -f2)
+    RUSTC_VERSION=$(rustc --version | cut -d' ' -f2)
     print_info "Cargo $CARGO_VERSION is already installed"
+    print_info "rustc $RUSTC_VERSION is currently active"
 
     # Check if rustup is available for updates
     if command -v rustup &>/dev/null; then
-      read -p "Do you want to update Rust/Cargo to the latest version? [y/N]: " -n 1 -r
-      echo
-      if [[ $REPLY =~ ^[Yy]$ ]]; then
-        print_step "Updating Rust and Cargo..."
-        rustup update stable
-        rustup default stable
-      fi
+      # Always update to latest stable for compatibility
+      print_step "Updating Rust to latest stable version..."
+      rustup update stable
+      rustup default stable
+
+      # Check updated version
+      NEW_RUSTC_VERSION=$(rustc --version | cut -d' ' -f2)
+      print_success "Updated to rustc $NEW_RUSTC_VERSION"
     else
-      print_info "rustup not available, skipping update check"
+      print_warning "rustup not available, cannot update Rust version"
+      print_info "Current Rust version may be too old for latest packages"
     fi
     return 0
   fi
 
-  print_step "Installing Rust and Cargo via rustup..."
+  print_step "Installing latest stable Rust and Cargo via rustup..."
 
-  # Download and install rustup
+  # Download and install rustup with latest stable
   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile default
 
   # Source cargo environment immediately
@@ -380,10 +384,19 @@ install_cargo() {
     print_info "Added ~/.cargo/bin to current session PATH"
   fi
 
+  # Update to ensure we have the very latest stable
+  if command -v rustup &>/dev/null; then
+    print_step "Ensuring latest stable Rust version..."
+    rustup update stable
+    rustup default stable
+  fi
+
   # Verify cargo installation
   if command -v cargo &>/dev/null; then
     CARGO_VERSION=$(cargo --version | cut -d' ' -f2)
+    RUSTC_VERSION=$(rustc --version | cut -d' ' -f2)
     print_success "Rust and Cargo $CARGO_VERSION installed successfully!"
+    print_success "rustc $RUSTC_VERSION is active"
 
     # Verify rustup is also available
     if command -v rustup &>/dev/null; then
@@ -413,6 +426,61 @@ install_cargo() {
       print_error "Could not make cargo available. Please check the installation."
       print_info "Try running: source ~/.cargo/env"
       exit 1
+    fi
+  fi
+}
+
+check_rust_version_for_eza() {
+  print_step "Checking Rust version compatibility for eza..."
+
+  if ! command -v rustc &>/dev/null; then
+    print_error "rustc not found!"
+    return 1
+  fi
+
+  RUSTC_VERSION=$(rustc --version | cut -d' ' -f2)
+  print_info "Current rustc version: $RUSTC_VERSION"
+
+  # Extract major and minor version numbers for comparison
+  RUSTC_MAJOR=$(echo "$RUSTC_VERSION" | cut -d'.' -f1)
+  RUSTC_MINOR=$(echo "$RUSTC_VERSION" | cut -d'.' -f2)
+
+  # eza requires rustc 1.81.0 or newer
+  REQUIRED_MAJOR=1
+  REQUIRED_MINOR=81
+
+  if [ "$RUSTC_MAJOR" -gt "$REQUIRED_MAJOR" ] ||
+    ([ "$RUSTC_MAJOR" -eq "$REQUIRED_MAJOR" ] && [ "$RUSTC_MINOR" -ge "$REQUIRED_MINOR" ]); then
+    print_success "Rust version is compatible with eza"
+    return 0
+  else
+    print_warning "Rust version $RUSTC_VERSION is too old for eza (requires 1.81.0+)"
+
+    if command -v rustup &>/dev/null; then
+      print_step "Updating Rust to latest stable version..."
+      rustup update stable
+      rustup default stable
+
+      # Check new version
+      NEW_RUSTC_VERSION=$(rustc --version | cut -d' ' -f2)
+      NEW_RUSTC_MAJOR=$(echo "$NEW_RUSTC_VERSION" | cut -d'.' -f1)
+      NEW_RUSTC_MINOR=$(echo "$NEW_RUSTC_VERSION" | cut -d'.' -f2)
+
+      print_info "Updated to rustc $NEW_RUSTC_VERSION"
+
+      if [ "$NEW_RUSTC_MAJOR" -gt "$REQUIRED_MAJOR" ] ||
+        ([ "$NEW_RUSTC_MAJOR" -eq "$REQUIRED_MAJOR" ] && [ "$NEW_RUSTC_MINOR" -ge "$REQUIRED_MINOR" ]); then
+        print_success "Rust version is now compatible with eza"
+        return 0
+      else
+        print_error "Even after update, Rust version $NEW_RUSTC_VERSION is still too old"
+        print_info "You may need to wait for a newer stable Rust release"
+        return 1
+      fi
+    else
+      print_error "rustup not available, cannot update Rust version"
+      print_info "Please update Rust manually or install a newer version"
+      return 1
     fi
   fi
 }
@@ -476,6 +544,15 @@ install_eza() {
 
   # Ensure cargo is available
   install_cargo
+
+  # Check Rust version compatibility before installing eza
+  if ! check_rust_version_for_eza; then
+    print_error "Rust version is incompatible with latest eza"
+    print_info "You can try installing an older version manually:"
+    echo -e "  ${BLUE}cargo install eza --version 0.18.0${NC}"
+    print_warning "Continuing with setup without eza..."
+    return 1
+  fi
 
   # Make sure cargo is in PATH for current session
   if ! command -v cargo &>/dev/null; then
@@ -552,9 +629,12 @@ install_eza() {
     fi
   else
     print_error "eza installation via cargo failed!"
+    print_info "This might be due to compilation issues or dependency conflicts."
     print_info "You can try installing it manually later with:"
     echo -e "  ${BLUE}source ~/.cargo/env${NC}"
     echo -e "  ${BLUE}cargo install eza${NC}"
+    print_info "Or try an older version:"
+    echo -e "  ${BLUE}cargo install eza --version 0.18.0${NC}"
     print_warning "Continuing with setup without eza..."
     return 1
   fi
@@ -799,8 +879,21 @@ print_completion_summary() {
   echo -e "   ✅ ${GREEN}powerlevel10k${NC} - Beautiful prompt theme"
   echo -e "   ✅ ${GREEN}zsh-autosuggestions${NC} - Command suggestions"
   echo -e "   ✅ ${GREEN}zsh-syntax-highlighting${NC} - Syntax coloring"
-  echo -e "   ✅ ${GREEN}eza${NC} - Enhanced ls command"
-  echo -e "   ✅ ${GREEN}zoxide${NC} - Smart cd command"
+  if command -v cargo &>/dev/null; then
+    RUSTC_VERSION=$(rustc --version | cut -d' ' -f2 2>/dev/null || echo "unknown")
+    echo -e "   ✅ ${GREEN}Rust & Cargo${NC} - Latest stable ($RUSTC_VERSION)"
+  fi
+  if command -v eza &>/dev/null; then
+    EZA_VERSION=$(eza --version | head -1 | awk '{print $2}' 2>/dev/null || echo "unknown")
+    echo -e "   ✅ ${GREEN}eza${NC} - Enhanced ls command ($EZA_VERSION)"
+  else
+    echo -e "   ⚠️  ${YELLOW}eza${NC} - Installation skipped (compatibility issues)"
+  fi
+  if command -v zoxide &>/dev/null; then
+    echo -e "   ✅ ${GREEN}zoxide${NC} - Smart cd command"
+  else
+    echo -e "   ⚠️  ${YELLOW}zoxide${NC} - Installation may have failed"
+  fi
   echo -e "   ✅ ${GREEN}Custom configuration${NC} - Your dotfiles appended"
   echo
   echo -e "${BOLD}${CYAN}Configuration Details:${NC}"
