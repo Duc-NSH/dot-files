@@ -535,37 +535,61 @@ install_zoxide() {
   fi
 
   case $PKG_MANAGER in
-  apt)
-    # Install via curl script or cargo
-    curl -sS https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | bash
-    ;;
-  yum | dnf)
-    curl -sS https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | bash
-    ;;
   pacman)
-    $INSTALL_CMD zoxide
+    if $INSTALL_CMD zoxide; then
+      print_success "zoxide installed via pacman!"
+      return 0
+    fi
     ;;
   zypper)
-    $INSTALL_CMD zoxide
+    if $INSTALL_CMD zoxide; then
+      print_success "zoxide installed via zypper!"
+      return 0
+    fi
     ;;
   apk)
-    $INSTALL_CMD zoxide
+    if $INSTALL_CMD zoxide; then
+      print_success "zoxide installed via apk!"
+      return 0
+    fi
     ;;
   brew)
-    brew install zoxide
-    ;;
-  *)
-    curl -sS https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | bash
+    if brew install zoxide; then
+      print_success "zoxide installed via Homebrew!"
+      return 0
+    fi
     ;;
   esac
 
-  # Add to PATH if installed in ~/.local/bin
-  if [ -f "$HOME/.local/bin/zoxide" ] && [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
-    echo 'export PATH="$HOME/.local/bin:$PATH"' >>"$ZSHRC"
-  fi
-
-  if command -v zoxide &>/dev/null || [ -f "$HOME/.local/bin/zoxide" ]; then
+  # Universal installation method via curl script
+  print_step "Installing zoxide via installation script..."
+  if curl -sS https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | bash; then
     print_success "zoxide installed successfully!"
+
+    # Check if zoxide is in PATH
+    if command -v zoxide &>/dev/null; then
+      print_success "zoxide is available in PATH"
+    elif [ -f "$HOME/.local/bin/zoxide" ]; then
+      print_info "zoxide installed to ~/.local/bin/zoxide"
+
+      # Add to current session PATH
+      if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
+        export PATH="$HOME/.local/bin:$PATH"
+        print_info "Added ~/.local/bin to current session PATH"
+
+        # Verify it's now available
+        if command -v zoxide &>/dev/null; then
+          print_success "zoxide is now available in PATH"
+        else
+          print_warning "zoxide still not found in PATH"
+        fi
+      fi
+
+      # Add to .zshrc if needed (will be handled by custom config append)
+      print_info "~/.local/bin will be added to PATH in .zshrc"
+    else
+      print_warning "zoxide installation completed but binary not found"
+    fi
   else
     print_warning "zoxide installation may have failed, but continuing..."
   fi
