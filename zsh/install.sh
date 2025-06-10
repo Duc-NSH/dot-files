@@ -348,13 +348,17 @@ install_cargo() {
     CARGO_VERSION=$(cargo --version | cut -d' ' -f2)
     print_info "Cargo $CARGO_VERSION is already installed"
 
-    # Check if it's up to date (optional update)
-    read -p "Do you want to update Rust/Cargo to the latest version? [y/N]: " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-      print_step "Updating Rust and Cargo..."
-      rustup update stable
-      rustup default stable
+    # Check if rustup is available for updates
+    if command -v rustup &>/dev/null; then
+      read -p "Do you want to update Rust/Cargo to the latest version? [y/N]: " -n 1 -r
+      echo
+      if [[ $REPLY =~ ^[Yy]$ ]]; then
+        print_step "Updating Rust and Cargo..."
+        rustup update stable
+        rustup default stable
+      fi
+    else
+      print_info "rustup not available, skipping update check"
     fi
     return 0
   fi
@@ -362,23 +366,54 @@ install_cargo() {
   print_step "Installing Rust and Cargo via rustup..."
 
   # Download and install rustup
-  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile default
 
-  # Source cargo environment
-  source "$HOME/.cargo/env"
+  # Source cargo environment immediately
+  if [ -f "$HOME/.cargo/env" ]; then
+    source "$HOME/.cargo/env"
+    print_info "Sourced cargo environment"
+  fi
 
-  # Verify installation
+  # Add cargo bin to current session PATH if not already there
+  if [ -d "$HOME/.cargo/bin" ] && [[ ":$PATH:" != *":$HOME/.cargo/bin:"* ]]; then
+    export PATH="$HOME/.cargo/bin:$PATH"
+    print_info "Added ~/.cargo/bin to current session PATH"
+  fi
+
+  # Verify cargo installation
   if command -v cargo &>/dev/null; then
     CARGO_VERSION=$(cargo --version | cut -d' ' -f2)
     print_success "Rust and Cargo $CARGO_VERSION installed successfully!"
 
-    # Add cargo bin to current session PATH if not already there
-    if [[ ":$PATH:" != *":$HOME/.cargo/bin:"* ]]; then
-      export PATH="$HOME/.cargo/bin:$PATH"
+    # Verify rustup is also available
+    if command -v rustup &>/dev/null; then
+      RUSTUP_VERSION=$(rustup --version | head -1 | cut -d' ' -f2)
+      print_success "rustup $RUSTUP_VERSION is available"
+    else
+      print_warning "rustup not found in PATH, but cargo is working"
     fi
   else
     print_error "Cargo installation failed!"
-    exit 1
+    print_info "Trying to manually source cargo environment..."
+
+    # Try different ways to get cargo in PATH
+    for cargo_path in "$HOME/.cargo/bin/cargo" "/usr/local/cargo/bin/cargo"; do
+      if [ -f "$cargo_path" ]; then
+        CARGO_DIR=$(dirname "$cargo_path")
+        export PATH="$CARGO_DIR:$PATH"
+        print_info "Found cargo at $cargo_path, added to PATH"
+        break
+      fi
+    done
+
+    # Final verification
+    if command -v cargo &>/dev/null; then
+      print_success "Cargo is now available!"
+    else
+      print_error "Could not make cargo available. Please check the installation."
+      print_info "Try running: source ~/.cargo/env"
+      exit 1
+    fi
   fi
 }
 
@@ -444,18 +479,52 @@ install_eza() {
 
   # Make sure cargo is in PATH for current session
   if ! command -v cargo &>/dev/null; then
+    print_step "Attempting to locate cargo..."
+
+    # Try sourcing cargo environment
     if [ -f "$HOME/.cargo/env" ]; then
       source "$HOME/.cargo/env"
-    elif [ -d "$HOME/.cargo/bin" ]; then
-      export PATH="$HOME/.cargo/bin:$PATH"
-    else
-      print_error "Cargo is not available in PATH!"
-      exit 1
+      print_info "Sourced ~/.cargo/env"
     fi
+
+    # Try adding cargo bin to PATH manually
+    if [ -d "$HOME/.cargo/bin" ]; then
+      export PATH="$HOME/.cargo/bin:$PATH"
+      print_info "Added ~/.cargo/bin to PATH"
+    fi
+
+    # Try common cargo installation paths
+    for cargo_path in "$HOME/.cargo/bin/cargo" "/usr/local/cargo/bin/cargo"; do
+      if [ -f "$cargo_path" ]; then
+        CARGO_DIR=$(dirname "$cargo_path")
+        export PATH="$CARGO_DIR:$PATH"
+        print_info "Found cargo at $cargo_path"
+        break
+      fi
+    done
+
+    # Final check
+    if ! command -v cargo &>/dev/null; then
+      print_error "Cargo is still not available in PATH!"
+      print_info "Please run the following commands manually:"
+      echo -e "  ${BLUE}source ~/.cargo/env${NC}"
+      echo -e "  ${BLUE}cargo install eza${NC}"
+      print_warning "Continuing with setup without eza..."
+      return 1
+    fi
+  fi
+
+  # Verify cargo is working
+  if ! cargo --version &>/dev/null; then
+    print_error "Cargo is not working properly!"
+    print_warning "Continuing with setup without eza..."
+    return 1
   fi
 
   # Install eza with cargo
   print_info "This may take a few minutes as eza will be compiled from source..."
+  print_info "Installing eza with: cargo install eza"
+
   if cargo install eza; then
     print_success "eza installed successfully via cargo!"
 
@@ -463,21 +532,31 @@ install_eza() {
     if command -v eza &>/dev/null; then
       EZA_VERSION=$(eza --version | head -1 | awk '{print $2}')
       print_success "eza $EZA_VERSION is now available!"
-    else
-      # Check if it's in .cargo/bin but not in PATH
-      if [ -f "$HOME/.cargo/bin/eza" ]; then
-        print_warning "eza installed but not in PATH"
-        print_info "Adding ~/.cargo/bin to PATH in .zshrc"
-        # This will be handled by the custom config append
-      else
-        print_error "eza installation verification failed!"
-        exit 1
+    elif [ -f "$HOME/.cargo/bin/eza" ]; then
+      print_success "eza installed to ~/.cargo/bin/eza"
+      print_info "Make sure ~/.cargo/bin is in your PATH"
+      # Add to PATH for current session
+      if [[ ":$PATH:" != *":$HOME/.cargo/bin:"* ]]; then
+        export PATH="$HOME/.cargo/bin:$PATH"
+        print_info "Added ~/.cargo/bin to current session PATH"
       fi
+
+      # Verify again
+      if command -v eza &>/dev/null; then
+        EZA_VERSION=$(eza --version | head -1 | awk '{print $2}')
+        print_success "eza $EZA_VERSION is now available!"
+      fi
+    else
+      print_warning "eza installation completed but binary not found"
+      print_info "You may need to add ~/.cargo/bin to your PATH manually"
     fi
   else
     print_error "eza installation via cargo failed!"
-    print_info "You can try installing it manually later with: cargo install eza"
+    print_info "You can try installing it manually later with:"
+    echo -e "  ${BLUE}source ~/.cargo/env${NC}"
+    echo -e "  ${BLUE}cargo install eza${NC}"
     print_warning "Continuing with setup without eza..."
+    return 1
   fi
 }
 
