@@ -608,30 +608,67 @@ update_zshrc_plugins() {
 
   # Check if plugins line exists
   if grep -q "^plugins=" "$ZSHRC"; then
-    # Get current plugins
-    CURRENT_PLUGINS=$(grep "^plugins=" "$ZSHRC" | sed 's/plugins=(//' | sed 's/)//' | tr -d '"' | tr -d "'" | tr '\n' ' ')
+    print_info "Found existing plugins configuration, updating..."
 
-    # Add new plugins if not already present
-    for plugin in $PLUGINS_TO_ADD; do
-      if [[ ! "$CURRENT_PLUGINS" =~ $plugin ]]; then
-        CURRENT_PLUGINS="$CURRENT_PLUGINS $plugin"
+    # Get current plugins (extract content between parentheses)
+    CURRENT_PLUGINS=$(grep "^plugins=" "$ZSHRC" | sed 's/^plugins=(//' | sed 's/).*$//' | tr -d '"' | tr -d "'" | tr '\n' ' ' | tr -s ' ')
+
+    # Build new plugins list
+    NEW_PLUGINS=""
+
+    # Add existing plugins first (avoid duplicates)
+    for plugin in $CURRENT_PLUGINS; do
+      # Skip empty plugins and whitespace
+      if [ -n "$plugin" ] && [ "$plugin" != " " ]; then
+        if [ -z "$NEW_PLUGINS" ]; then
+          NEW_PLUGINS="$plugin"
+        else
+          NEW_PLUGINS="$NEW_PLUGINS $plugin"
+        fi
       fi
     done
 
-    # Update plugins line
-    FORMATTED_PLUGINS=$(echo "$CURRENT_PLUGINS" | xargs | sed 's/ /\n  /g')
-    sed -i.bak "s/^plugins=.*/plugins=(\n  $FORMATTED_PLUGINS\n)/" "$ZSHRC"
-  else
-    # Add plugins line
-    echo "" >>"$ZSHRC"
-    echo "plugins=(" >>"$ZSHRC"
+    # Add new plugins if not already present
     for plugin in $PLUGINS_TO_ADD; do
-      echo "  $plugin" >>"$ZSHRC"
+      if ! echo " $NEW_PLUGINS " | grep -q " $plugin "; then
+        if [ -z "$NEW_PLUGINS" ]; then
+          NEW_PLUGINS="$plugin"
+        else
+          NEW_PLUGINS="$NEW_PLUGINS $plugin"
+        fi
+      fi
     done
-    echo ")" >>"$ZSHRC"
+
+    # Create backup
+    cp "$ZSHRC" "$ZSHRC.bak"
+
+    # Use a temporary file to avoid sed issues
+    TEMP_FILE=$(mktemp)
+
+    # Copy everything except the plugins line to temp file
+    grep -v "^plugins=" "$ZSHRC" >"$TEMP_FILE"
+
+    # Add the new plugins line
+    echo "plugins=($NEW_PLUGINS)" >>"$TEMP_FILE"
+
+    # Replace original file
+    mv "$TEMP_FILE" "$ZSHRC"
+
+  else
+    print_info "No existing plugins configuration found, adding new one..."
+
+    # Add plugins line at the end
+    echo "" >>"$ZSHRC"
+    echo "plugins=($PLUGINS_TO_ADD)" >>"$ZSHRC"
   fi
 
   print_success "Updated .zshrc plugins configuration!"
+
+  # Show what plugins are now configured
+  if grep -q "^plugins=" "$ZSHRC"; then
+    FINAL_PLUGINS=$(grep "^plugins=" "$ZSHRC")
+    print_info "Configured plugins: $FINAL_PLUGINS"
+  fi
 }
 
 # =============================================================================
