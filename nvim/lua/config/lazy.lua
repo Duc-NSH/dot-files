@@ -94,7 +94,7 @@ require("lspconfig").yamlls.setup({
                         description = "Traefik v3 YAML configuration file",
                         fileMatch = { "traefik.yml", "traefik.yaml" },
                         name = "Traefik v3",
-                        url = "https://json.schemastore.org/traefik-v3.json",
+                        url = "https://www.schemastore.org/traefik-v3.json",
                     },
                     ["Traefik v3 File Provider"] = {
                         description = "Traefik v3 Dynamic Configuration File Provider",
@@ -107,7 +107,7 @@ require("lspconfig").yamlls.setup({
                             "tls.yaml",
                         },
                         name = "Traefik v3 File Provider",
-                        url = "https://json.schemastore.org/traefik-v3-file-provider.json",
+                        url = "https://www.schemastore.org/traefik-v3-file-provider.json",
                     },
                 },
             }),
