@@ -9,6 +9,7 @@
   - [NeoVim](#neovim)
     - [MacOS <!-- {#nvim} -->](#macos-nvim)
     - [Ubuntu <!-- {#nvim} -->](#ubuntu-nvim)
+  - [Claude Code](#claude-code)
 
 ## Requirements
 
@@ -78,3 +79,33 @@ Install Required Tools first:
 
 1. Create symlink to this repository for LazyVim:
    `ln -s ~/dot-files/nvim ~/.config/nvim`
+
+## Claude Code
+
+The `claude/` folder holds the user-level Claude Code configuration that is
+shared across machines:
+
+- `settings.json` — permissions, enabled plugins (with `extraKnownMarketplaces`
+  so third-party plugins auto-install), editor mode, model, notifications.
+- `rules/` — global instructions applied to every project.
+- `skills/` — user-level skills.
+
+Everything else under `~/.claude/` (sessions, history, plugin cache,
+credentials, `~/.claude.json`) is machine-local state and is intentionally
+not version controlled.
+
+### Setup on a new machine
+
+1. Run the symlink script (idempotent; backs up any existing files as `.bak`):
+
+   ```bash
+   ~/dot-files/claude/install.sh
+   ```
+
+1. Run `claude` and log in (authentication is per-machine).
+
+1. Approve the plugin/marketplace installs when prompted on first launch.
+
+> NOTE: user-scope MCP servers cannot be synced (they live in
+> `~/.claude.json`). If any are needed, add them with
+> `claude mcp add --scope user <name> ...` on each machine.
